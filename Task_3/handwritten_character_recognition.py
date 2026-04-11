@@ -4,6 +4,7 @@
 # Model: Convolutional Neural Networks (CNN), extendable to CRNN
 # Datasets: MNIST (digits), EMNIST (characters)
 
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
