@@ -1,220 +1,229 @@
-# Credit Scoring Model
-# Objective: Predict an individual's creditworthiness using past financial data.
-# Approach: Classification algorithms - Logistic Regression, Decision Trees, Random Forest
+# ============================================
+# CREDIT SCORING MODEL (END-TO-END)
+# ============================================
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+
+# Visualization
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Sklearn
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score,
     f1_score, roc_auc_score, classification_report, confusion_matrix
 )
-import matplotlib.pyplot as plt
-import seaborn as sns
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+
+# Handle imbalance
+from imblearn.over_sampling import SMOTE
+
+# Save model
+import joblib
+
 import warnings
 warnings.filterwarnings('ignore')
 
 
-# ─────────────────────────────────────────────
-# 1. Generate / Load Dataset
-# ─────────────────────────────────────────────
-# Using synthetic data that mimics real credit data.
-# Replace this section with: df = pd.read_csv('your_dataset.csv')
+# ============================================
+# 1. LOAD DATASET
+# ============================================
 
-np.random.seed(42)
-n_samples = 1000
+df = pd.read_csv("credit_risk_dataset.csv")
 
-df = pd.DataFrame({
-    'age':             np.random.randint(21, 65, n_samples),
-    'income':          np.random.randint(20000, 120000, n_samples),
-    'loan_amount':     np.random.randint(1000, 50000, n_samples),
-    'loan_tenure':     np.random.randint(6, 60, n_samples),
-    'existing_debts':  np.random.randint(0, 30000, n_samples),
-    'missed_payments': np.random.randint(0, 10, n_samples),
-    'credit_history':  np.random.randint(0, 15, n_samples),
-    'employment_type': np.random.choice(['Salaried', 'Self-employed', 'Unemployed'], n_samples),
-    'creditworthy':    np.random.randint(0, 2, n_samples)   # 0 = Not creditworthy, 1 = Creditworthy
-})
-
-print("Dataset shape:", df.shape)
-print("\nFirst 5 rows:")
+print("Dataset Shape:", df.shape)
 print(df.head())
-print("\nClass distribution:")
-print(df['creditworthy'].value_counts())
 
 
-# ─────────────────────────────────────────────
-# 2. Feature Engineering
-# ─────────────────────────────────────────────
+# ============================================
+# 2. DATA CLEANING
+# ============================================
 
-# Debt-to-Income Ratio
-df['debt_to_income'] = df['existing_debts'] / (df['income'] + 1)
+# Rename target column (if needed)
+df.rename(columns={'loan_status': 'target'}, inplace=True)
 
-# Loan-to-Income Ratio
-df['loan_to_income'] = df['loan_amount'] / (df['income'] + 1)
+# Drop missing values
+df.dropna(inplace=True)
 
-# Payment reliability score (inverse of missed payments)
-df['payment_reliability'] = 1 / (df['missed_payments'] + 1)
-
-# Encode categorical column
-le = LabelEncoder()
-df['employment_type_encoded'] = le.fit_transform(df['employment_type'])
+print("\nAfter cleaning:", df.shape)
 
 
-# ─────────────────────────────────────────────
-# 3. Prepare Features and Target
-# ─────────────────────────────────────────────
+# ============================================
+# 3. FEATURE ENGINEERING
+# ============================================
 
-feature_columns = [
-    'age', 'income', 'loan_amount', 'loan_tenure',
-    'existing_debts', 'missed_payments', 'credit_history',
-    'employment_type_encoded', 'debt_to_income',
-    'loan_to_income', 'payment_reliability'
-]
+# Debt-to-Income ratio
+df['debt_to_income'] = df['loan_amnt'] / (df['person_income'] + 1)
 
-X = df[feature_columns]
-y = df['creditworthy']
+# Credit history ratio
+df['credit_history_ratio'] = df['cb_person_cred_hist_length'] / (df['person_age'] + 1)
 
-# Train-test split (80/20)
+# Encode categorical features
+df = pd.get_dummies(df, drop_first=True)
+
+
+# ============================================
+# 4. SPLIT DATA
+# ============================================
+
+X = df.drop('target', axis=1)
+y = df['target']
+
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Feature scaling (important for Logistic Regression)
+print("\nTrain size:", X_train.shape)
+print("Test size:", X_test.shape)
+
+
+# ============================================
+# 5. HANDLE CLASS IMBALANCE
+# ============================================
+
+smote = SMOTE(random_state=42)
+X_train, y_train = smote.fit_resample(X_train, y_train)
+
+print("\nAfter SMOTE:", X_train.shape)
+
+
+# ============================================
+# 6. SCALING (for Logistic Regression)
+# ============================================
+
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled  = scaler.transform(X_test)
 
-print(f"\nTraining samples: {X_train.shape[0]}")
-print(f"Testing samples:  {X_test.shape[0]}")
 
-
-# ─────────────────────────────────────────────
-# 4. Train Models
-# ─────────────────────────────────────────────
+# ============================================
+# 7. TRAIN MODELS
+# ============================================
 
 models = {
-    'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
-    'Decision Tree':       DecisionTreeClassifier(max_depth=5, random_state=42),
-    'Random Forest':       RandomForestClassifier(n_estimators=100, random_state=42)
+    "Logistic Regression": LogisticRegression(max_iter=1000),
+    "Decision Tree": DecisionTreeClassifier(max_depth=6),
+    "Random Forest": RandomForestClassifier(n_estimators=200)
 }
 
 results = {}
 
 for name, model in models.items():
-    # Logistic Regression uses scaled data; tree-based models use raw
-    X_tr = X_train_scaled if name == 'Logistic Regression' else X_train
-    X_te = X_test_scaled  if name == 'Logistic Regression' else X_test
+    
+    X_tr = X_train_scaled if name == "Logistic Regression" else X_train
+    X_te = X_test_scaled if name == "Logistic Regression" else X_test
 
     model.fit(X_tr, y_train)
-    y_pred      = model.predict(X_te)
-    y_pred_prob = model.predict_proba(X_te)[:, 1]
+
+    y_pred = model.predict(X_te)
+    y_prob = model.predict_proba(X_te)[:, 1]
 
     results[name] = {
-        'Accuracy':  accuracy_score(y_test, y_pred),
-        'Precision': precision_score(y_test, y_pred),
-        'Recall':    recall_score(y_test, y_pred),
-        'F1-Score':  f1_score(y_test, y_pred),
-        'ROC-AUC':   roc_auc_score(y_test, y_pred_prob),
-        'model':     model,
-        'y_pred':    y_pred
+        "model": model,
+        "Accuracy": accuracy_score(y_test, y_pred),
+        "Precision": precision_score(y_test, y_pred),
+        "Recall": recall_score(y_test, y_pred),
+        "F1": f1_score(y_test, y_pred),
+        "ROC-AUC": roc_auc_score(y_test, y_prob),
+        "y_pred": y_pred
     }
 
-    print(f"\n{'='*45}")
-    print(f"  {name}")
-    print(f"{'='*45}")
-    print(classification_report(y_test, y_pred, target_names=['Not Creditworthy', 'Creditworthy']))
+    print(f"\n{'='*50}")
+    print(name)
+    print('='*50)
+    print(classification_report(y_test, y_pred))
 
 
-# ─────────────────────────────────────────────
-# 5. Compare Model Performance
-# ─────────────────────────────────────────────
+# ============================================
+# 8. MODEL COMPARISON
+# ============================================
 
 metrics_df = pd.DataFrame({
     name: {k: v for k, v in vals.items() if k not in ('model', 'y_pred')}
     for name, vals in results.items()
 }).T
 
-print("\nModel Comparison:")
-print(metrics_df.round(4).to_string())
+print("\nModel Comparison:\n", metrics_df.round(4))
 
 
-# ─────────────────────────────────────────────
-# 6. Visualizations
-# ─────────────────────────────────────────────
+# ============================================
+# 9. CROSS VALIDATION (Random Forest)
+# ============================================
 
-fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-fig.suptitle('Credit Scoring Model — Performance Comparison', fontsize=14, fontweight='bold')
+rf_model = results["Random Forest"]["model"]
 
-# (a) Bar chart — metric comparison
-metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC']
-x = np.arange(len(metrics_to_plot))
-width = 0.25
-colors = ['#378ADD', '#1D9E75', '#D85A30']
+cv_scores = cross_val_score(rf_model, X, y, cv=5, scoring='roc_auc')
 
-for i, (name, vals) in enumerate(results.items()):
-    scores = [vals[m] for m in metrics_to_plot]
-    axes[0].bar(x + i * width, scores, width, label=name, color=colors[i], alpha=0.85)
+print("\nCross-Validation ROC-AUC:", cv_scores.mean())
 
-axes[0].set_xticks(x + width)
-axes[0].set_xticklabels(metrics_to_plot, rotation=15)
-axes[0].set_ylim(0, 1.1)
-axes[0].set_title('Metric Comparison')
-axes[0].legend()
-axes[0].set_ylabel('Score')
 
-# (b) Confusion matrix — best model (Random Forest)
-best_model_name = max(results, key=lambda n: results[n]['ROC-AUC'])
-cm = confusion_matrix(y_test, results[best_model_name]['y_pred'])
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[1],
-            xticklabels=['Not Creditworthy', 'Creditworthy'],
-            yticklabels=['Not Creditworthy', 'Creditworthy'])
-axes[1].set_title(f'Confusion Matrix\n({best_model_name})')
-axes[1].set_xlabel('Predicted')
-axes[1].set_ylabel('Actual')
+# ============================================
+# 10. VISUALIZATION
+# ============================================
 
-# (c) Feature importance — Random Forest
-rf_model = results['Random Forest']['model']
-importances = pd.Series(rf_model.feature_importances_, index=feature_columns).sort_values(ascending=True)
-importances.plot(kind='barh', ax=axes[2], color='#1D9E75', alpha=0.85)
-axes[2].set_title('Feature Importance\n(Random Forest)')
-axes[2].set_xlabel('Importance Score')
+plt.figure(figsize=(10,5))
 
+metrics_df[['Accuracy','Precision','Recall','F1','ROC-AUC']].plot(kind='bar')
+plt.title("Model Performance Comparison")
+plt.xticks(rotation=0)
+plt.ylabel("Score")
 plt.tight_layout()
-plt.savefig('credit_scoring_results.png', dpi=150, bbox_inches='tight')
+plt.savefig("model_comparison.png", dpi=150, bbox_inches='tight')
 plt.show()
-print("\nChart saved as 'credit_scoring_results.png'")
 
 
-# ─────────────────────────────────────────────
-# 7. Predict on a New Applicant
-# ─────────────────────────────────────────────
+# Confusion Matrix
+best_model_name = metrics_df['ROC-AUC'].idxmax()
+cm = confusion_matrix(y_test, results[best_model_name]['y_pred'])
 
-new_applicant = pd.DataFrame([{
-    'age': 35,
-    'income': 55000,
-    'loan_amount': 15000,
-    'loan_tenure': 24,
-    'existing_debts': 5000,
-    'missed_payments': 1,
-    'credit_history': 7,
-    'employment_type_encoded': 0,          # 0 = Salaried
-    'debt_to_income': 5000 / (55000 + 1),
-    'loan_to_income': 15000 / (55000 + 1),
-    'payment_reliability': 1 / (1 + 1)
-}])
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.title(f"Confusion Matrix ({best_model_name})")
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.tight_layout()
+plt.savefig("confusion_matrix.png", dpi=150, bbox_inches='tight')
+plt.show()
 
-rf = results['Random Forest']['model']
-prediction  = rf.predict(new_applicant)[0]
-probability = rf.predict_proba(new_applicant)[0][1]
 
-print("\n" + "="*45)
-print("  New Applicant Prediction (Random Forest)")
-print("="*45)
-print(f"  Creditworthy:  {'Yes' if prediction == 1 else 'No'}")
-print(f"  Confidence:    {probability:.1%}")
-print("="*45)
+# Feature Importance
+importances = pd.Series(
+    rf_model.feature_importances_,
+    index=X.columns
+).sort_values(ascending=False)
+
+importances.head(10).plot(kind='barh')
+plt.title("Top Features (Random Forest)")
+plt.gca().invert_yaxis()
+plt.tight_layout()
+plt.savefig("feature_importance.png", dpi=150, bbox_inches='tight')
+plt.show()
+
+
+# ============================================
+# 11. SAVE MODEL
+# ============================================
+
+joblib.dump(rf_model, "credit_model.pkl")
+joblib.dump(scaler, "scaler.pkl")
+
+print("\nModel saved successfully!")
+
+
+# ============================================
+# 12. PREDICT NEW CUSTOMER
+# ============================================
+
+sample = X_test.iloc[0:1]
+
+prediction = rf_model.predict(sample)[0]
+prob = rf_model.predict_proba(sample)[0][1]
+
+print("\nNew Prediction:")
+print("Creditworthy:", "Yes" if prediction == 1 else "No")
+print("Confidence:", round(prob * 100, 2), "%")
