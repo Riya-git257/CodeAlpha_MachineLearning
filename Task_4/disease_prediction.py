@@ -42,8 +42,8 @@ def load_dataset(target=DISEASE_TARGET):
     """
     Load one of three medical datasets.
     - breast_cancer : built into sklearn (no download needed)
-    - diabetes      : download from https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database
-    - heart         : download from https://www.kaggle.com/datasets/cherngs/heart-disease-cleveland-uci
+    - diabetes      : downloaded from https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database
+    - heart         : downloaded from https://www.kaggle.com/datasets/cherngs/heart-disease-cleveland-uci
     """
 
     if target == 'breast_cancer':
@@ -101,7 +101,6 @@ def generate_synthetic_data(n_samples, n_features, target):
 # ─────────────────────────────────────────────
 # 2. Exploratory Data Analysis (EDA)
 # ─────────────────────────────────────────────
-
 def perform_eda(df, class_names):
     print("=" * 50)
     print("  Exploratory Data Analysis")
