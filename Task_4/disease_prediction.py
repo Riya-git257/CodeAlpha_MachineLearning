@@ -2,7 +2,7 @@
 # Objective: Predict the possibility of diseases based on patient data.
 # Approach: Classification techniques on structured medical datasets.
 # Algorithms: SVM, Logistic Regression, Random Forest, XGBoost
-# Datasets: Heart Disease, Diabetes, Breast Cancer (UCI ML Repository)
+# Datasets: Heart Disease, Diabetes, Breast Cancer 
 
 import numpy as np
 import pandas as pd
@@ -377,28 +377,30 @@ def tune_best_model(X_train, y_train, best_name):
 # ─────────────────────────────────────────────
 
 def predict_patient(model, scaler, feature_names, patient_data: dict, class_names):
-    """
-    Predict disease risk for a new patient.
-    patient_data: dict with feature names as keys.
-    """
     patient_df = pd.DataFrame([patient_data])[feature_names]
     patient_scaled = scaler.transform(patient_df)
 
     prediction  = model.predict(patient_scaled)[0]
     probability = model.predict_proba(patient_scaled)[0]
 
+    # FIX: disease_class is 0 for breast_cancer (Malignant=0, Benign=1)
+    # For diabetes/heart, disease is class 1 — detect automatically:
+    disease_class = 0 if class_names[0] in ('Malignant',) else 1
+    disease_prob  = probability[disease_class]
+
     print("\n" + "=" * 45)
     print("  New Patient Prediction")
     print("=" * 45)
     for feature, value in patient_data.items():
-        print(f"  {feature:<25} : {value}")
+        print(f"  {feature:<35} : {value:.4f}")
     print("-" * 45)
     print(f"  Prediction   : {class_names[prediction]}")
     print(f"  Confidence   : {probability[prediction]:.1%}")
-    print(f"  Risk Score   : {probability[1]:.1%} chance of disease")
+    print(f"  Risk Score   : {disease_prob:.1%} chance of {class_names[disease_class]}")
     print("=" * 45)
 
     return prediction, probability
+
 
 
 # ─────────────────────────────────────────────
@@ -435,13 +437,18 @@ if __name__ == '__main__':
     # 7. Tune best model
     tuned_model = tune_best_model(X_train, y_train, best_name)
 
-    # 8. Predict on a sample patient (Breast Cancer example)
+     # 8. Predict — use an actual malignant case from the test set
     if DISEASE_TARGET == 'breast_cancer':
-        sample_patient = {feat: float(np.random.rand()) for feat in feature_names}
+        from sklearn.datasets import load_breast_cancer
+        raw = load_breast_cancer()
+        raw_df = pd.DataFrame(raw.data, columns=raw.feature_names)
+        raw_df['target'] = raw.target
+
+        # Grab the first Malignant sample (target == 0)
+        malignant_row = raw_df[raw_df['target'] == 0].iloc[0]
+        sample_patient = malignant_row.drop('target').to_dict()
     else:
         sample_patient = {feat: float(np.random.rand()) for feat in feature_names}
 
     best_model = tuned_model if tuned_model else results[best_name]['model']
     predict_patient(best_model, scaler, feature_names, sample_patient, class_names)
-
-    print("\nAll done! Check the saved plots in your working directory.")
